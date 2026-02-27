@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body {
+      background: transparent;
+      overflow: hidden;
+      width: 1920px;
+      height: 1080px;
+      font-family: 'Segoe UI', sans-serif;
+    }
+    #unmute-btn {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      background: rgba(0,0,0,0.7);
+      color: white;
+      border: 2px solid white;
+      border-radius: 12px;
+      padding: 16px 32px;
+      font-size: 20px;
+      cursor: pointer;
+      z-index: 999;
+    }
+    #unmute-btn:hover { background: rgba(255,255,255,0.2); }
+    #user-info {
+      position: absolute;
+      top: 40px;
+      left: 40px;
+      display: none;
+      align-items: center;
+      gap: 12px;
+    }
+    #avatar {
+      width: 56px;
+      height: 56px;
+      border-radius: 50%;
+      border: 2px solid white;
+      box-shadow: 0 0 6px rgba(0,0,0,0.8);
+    }
+    #username {
+      color: white;
+      font-size: 22px;
+      font-weight: bold;
+      text-shadow: -2px -2px 0 #000, 2px -2px 0 #000, -2px 2px 0 #000, 2px 2px 0 #000;
+    }
+    #media-wrap {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      display: none;
+      justify-content: center;
+      align-items: center;
+    }
+    #media-img, #media-video {
+      max-width: 860px;
+      max-height: 600px;
+      border-radius: 14px;
+      box-shadow: 0 6px 24px rgba(0,0,0,0.7);
+    }
+    #message-text {
+      position: absolute;
+      bottom: 40px;
+      left: 50%;
+      transform: translateX(-50%);
+      display: none;
+      color: white;
+      font-size: 22px;
+      font-weight: 600;
+      background: rgba(0,0,0,0.5);
+      padding: 10px 24px;
+      border-radius: 10px;
+      max-width: 1400px;
+      text-align: center;
+      word-break: break-word;
+      white-space: pre-wrap;
+      text-shadow: -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000;
+    }
+  </style>
+</head>
+<body>
+
+  <button id="unmute-btn" onclick="unlockAudio()">🔊 Cliquer pour activer le son</button>
+
+  <div id="user-info">
+    <img id="avatar" src="" alt="avatar" />
+    <span id="username"></span>
+  </div>
+  <div id="media-wrap">
+    <img id="media-img" src="" alt="" style="display:none;" />
+    <video id="media-video" autoplay playsinline style="display:none;"></video>
+  </div>
+  <div id="message-text"></div>
+
+<script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+<script>
+  const socket     = io();
+  const userInfo   = document.getElementById("user-info");
+  const avatarEl   = document.getElementById("avatar");
+  const usernameEl = document.getElementById("username");
+  const mediaWrap  = document.getElementById("media-wrap");
+  const imgEl      = document.getElementById("media-img");
+  const videoEl    = document.getElementById("media-video");
+  const textEl     = document.getElementById("message-text");
+  const unmuteBtn  = document.getElementById("unmute-btn");
+  let hideTimeout  = null;
+  let audioUnlocked = false;
+
+  function unlockAudio() {
+    const ctx = new AudioContext();
+    const buf = ctx.createBuffer(1, 1, 22050);
+    const src = ctx.createBufferSource();
+    src.buffer = buf;
+    src.connect(ctx.destination);
+    src.start(0);
+    ctx.resume();
+    audioUnlocked = true;
+    unmuteBtn.style.display = "none";
+  }
+
+  function hideAll() {
+    userInfo.style.display  = "none";
+    mediaWrap.style.display = "none";
+    textEl.style.display    = "none";
+    imgEl.style.display     = "none";
+    videoEl.style.display   = "none";
+    videoEl.pause();
+    videoEl.src = "";
+    if (hideTimeout) clearTimeout(hideTimeout);
+  }
+
+  function startHideTimer(ms) {
+    if (hideTimeout) clearTimeout(hideTimeout);
+    hideTimeout = setTimeout(hideAll, ms);
+  }
+
+  socket.on("show_overlay", (data) => {
+    hideAll();
+
+    avatarEl.src           = data.avatar || "";
+    usernameEl.textContent = data.username || "";
+    userInfo.style.display = "flex";
+
+    if (data.text) {
+      textEl.textContent   = data.text;
+      textEl.style.display = "block";
+    }
+
+    if (data.media_type === "video") {
+      videoEl.muted         = !audioUnlocked;
+      videoEl.volume        = 1.0;
+      videoEl.style.display = "block";
+      mediaWrap.style.display = "flex";
+
+  // Cache dès que la vidéo se termine naturellement
+      videoEl.onended = () => {
+      hideAll();
+    };
+
+  // Fallback si la vidéo ne charge pas
+      videoEl.onerror = () => startHideTimer(10000);
+
+  // Supprime l'ancien timer basé sur la durée
+      videoEl.onloadedmetadata = null;
+
+      videoEl.src = data.media;
+      videoEl.play().catch(() => {
+      videoEl.muted = true;
+      videoEl.play();
+  });
+
+    } else if (data.media_type === "image") {
+      imgEl.src             = data.media;
+      imgEl.style.display   = "block";
+      mediaWrap.style.display = "flex";
+      startHideTimer(8000);
+
+    } else {
+      startHideTimer(8000);
+    }
+  });
+
+  // ← /stop appelle cette fonction
+  socket.on("hide_overlay", () => {
+    hideAll();
+  });
+</script>
+</body>
+</html>
