@@ -107,8 +107,11 @@
   const videoEl    = document.getElementById("media-video");
   const textEl     = document.getElementById("message-text");
   const unmuteBtn  = document.getElementById("unmute-btn");
-  let hideTimeout  = null;
   let audioUnlocked = false;
+
+  // ── File d'attente ──
+  const queue = [];
+  let isPlaying = false;
 
   function unlockAudio() {
     const ctx = new AudioContext();
@@ -128,66 +131,82 @@
     textEl.style.display    = "none";
     imgEl.style.display     = "none";
     videoEl.style.display   = "none";
+    videoEl.onended         = null;
+    videoEl.onerror         = null;
+    videoEl.onloadedmetadata = null;
     videoEl.pause();
     videoEl.src = "";
-    if (hideTimeout) clearTimeout(hideTimeout);
   }
 
-  function startHideTimer(ms) {
-    if (hideTimeout) clearTimeout(hideTimeout);
-    hideTimeout = setTimeout(hideAll, ms);
-  }
+  function playNext() {
+    if (queue.length === 0) {
+      isPlaying = false;
+      hideAll();
+      return;
+    }
 
-  socket.on("show_overlay", (data) => {
+    isPlaying = true;
+    const data = queue.shift();
     hideAll();
 
+    // Pseudo + avatar
     avatarEl.src           = data.avatar || "";
     usernameEl.textContent = data.username || "";
     userInfo.style.display = "flex";
 
+    // Texte
     if (data.text) {
       textEl.textContent   = data.text;
       textEl.style.display = "block";
     }
 
     if (data.media_type === "video") {
-      videoEl.muted         = !audioUnlocked;
-      videoEl.volume        = 1.0;
-      videoEl.style.display = "block";
+      videoEl.muted           = !audioUnlocked;
+      videoEl.volume          = 1.0;
+      videoEl.style.display   = "block";
       mediaWrap.style.display = "flex";
 
-  // Cache dès que la vidéo se termine naturellement
-      videoEl.onended = () => {
-      hideAll();
-    };
-
-  // Fallback si la vidéo ne charge pas
-      videoEl.onerror = () => startHideTimer(10000);
-
-  // Supprime l'ancien timer basé sur la durée
-      videoEl.onloadedmetadata = null;
+      // Passe au suivant dès que la vidéo se termine
+      videoEl.onended = () => playNext();
+      videoEl.onerror = () => {
+        setTimeout(playNext, 1000);
+      };
 
       videoEl.src = data.media;
       videoEl.play().catch(() => {
-      videoEl.muted = true;
-      videoEl.play();
-  });
+        videoEl.muted = true;
+        videoEl.play();
+      });
 
     } else if (data.media_type === "image") {
-      imgEl.src             = data.media;
-      imgEl.style.display   = "block";
+      imgEl.src               = data.media;
+      imgEl.style.display     = "block";
       mediaWrap.style.display = "flex";
-      startHideTimer(8000);
+      // Image : affiche 8 secondes puis passe au suivant
+      setTimeout(playNext, 8000);
 
     } else {
-      startHideTimer(8000);
+      // Texte seul : affiche 8 secondes puis passe au suivant
+      setTimeout(playNext, 8000);
     }
+  }
+
+  // Nouveau message → ajout en file d'attente
+  socket.on("show_overlay", (data) => {
+    queue.push(data);
+    if (!isPlaying) playNext();
   });
 
-  // ← /stop appelle cette fonction
-  socket.on("hide_overlay", () => {
+  // /stop → vide la file et cache tout
+// /stop → stoppe uniquement la vidéo en cours, continue la file
+socket.on("hide_overlay", () => {
+    isPlaying = false;
     hideAll();
-  });
+    // Petit délai puis passe au suivant dans la file
+    setTimeout(playNext, 500);
+});
+
 </script>
+
 </body>
 </html>
