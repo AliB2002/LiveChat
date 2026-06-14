@@ -77,6 +77,8 @@ docker compose logs -f
    - ✅ `Message Content Intent`
    - ✅ `Server Members Intent`
    - ✅ `Presence Intent`
+   - ✅ `Message Content Intent` (nécessaire pour lire le contenu des messages)
+   - ✅ `Add Reactions` (nécessaire pour ajouter des réactions aux messages)
 5. Va dans **"OAuth2" → "URL Generator"**
 6. Coche les scopes :
    - ✅ `bot`
@@ -84,6 +86,7 @@ docker compose logs -f
 7. Coche les permissions Bot :
    - ✅ `Send Messages`
    - ✅ `View Channels`
+   - ✅ `Add Reactions` (pour les confirmations de détection automatique)
 8. Copie l'URL générée en bas → ouvre-la dans ton navigateur → invite le bot sur ton serveur
 
 ---
@@ -101,10 +104,20 @@ docker compose logs -f
 
 | Commande | Paramètres | Description |
 |---|---|---|
-| `/send` | `texte` (optionnel), `fichier` (optionnel) | Envoie une image/vidéo et/ou texte sur l'overlay |
 | `/stop` | — | Stoppe l'élément en cours et passe au suivant |
 | `/dispo` | — | Vérifie si le serveur overlay est opérationnel |
 | `/obs` | — | Affiche le lien à coller dans OBS |
+
+### ⚡ Détection automatique
+
+**Le bot détecte maintenant automatiquement les messages contenant des vidéos, images, audio ou texte et les envoie directement à l'overlay OBS !**
+
+- ✅ Envoyez une vidéo (MP4, MOV, WEBM) → affichage automatique dans OBS
+- ✅ Envoyez une image (PNG, JPG, GIF, WEBP) → affichage automatique dans OBS
+- ✅ Envoyez un fichier audio (MP3, WAV, OGG) → lecture automatique dans OBS
+- ✅ Envoyez du texte → affichage automatique dans OBS
+- ✅ Le bot ajoute une réaction **✅** pour confirmer la prise en compte
+- ✅ Si erreur, le bot ajoute une réaction **❌**
 
 ### Formats supportés
 
@@ -112,6 +125,7 @@ docker compose logs -f
 |---|---|
 | Images | PNG, JPG, JPEG, GIF, WEBP |
 | Vidéos | MP4, MOV, WEBM |
+| Audio | MP3, WAV, OGG |
 
 ---
 

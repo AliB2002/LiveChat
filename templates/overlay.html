@@ -62,6 +62,9 @@
       border-radius: 14px;
       box-shadow: 0 6px 24px rgba(0,0,0,0.7);
     }
+    #media-audio {
+      display: none;
+    }
     #message-text {
       position: absolute;
       bottom: 40px;
@@ -69,16 +72,21 @@
       transform: translateX(-50%);
       display: none;
       color: white;
-      font-size: 22px;
-      font-weight: 600;
-      background: rgba(0,0,0,0.5);
-      padding: 10px 24px;
-      border-radius: 10px;
+      font-size: 48px;
+      font-weight: 700;
       max-width: 1400px;
       text-align: center;
       word-break: break-word;
       white-space: pre-wrap;
-      text-shadow: -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000;
+      text-shadow:
+        -3px -3px 0 #000,
+        3px -3px 0 #000,
+        -3px 3px 0 #000,
+        3px 3px 0 #000,
+        -3px 0 0 #000,
+        3px 0 0 #000,
+        0 -3px 0 #000,
+        0 3px 0 #000;
     }
   </style>
 </head>
@@ -93,6 +101,7 @@
   <div id="media-wrap">
     <img id="media-img" src="" alt="" style="display:none;" />
     <video id="media-video" autoplay playsinline style="display:none;"></video>
+    <audio id="media-audio" autoplay playsinline style="display:none;"></audio>
   </div>
   <div id="message-text"></div>
 
@@ -105,6 +114,7 @@
   const mediaWrap  = document.getElementById("media-wrap");
   const imgEl      = document.getElementById("media-img");
   const videoEl    = document.getElementById("media-video");
+  const audioEl    = document.getElementById("media-audio");
   const textEl     = document.getElementById("message-text");
   const unmuteBtn  = document.getElementById("unmute-btn");
   let audioUnlocked = false;
@@ -136,6 +146,12 @@
     videoEl.onloadedmetadata = null;
     videoEl.pause();
     videoEl.src = "";
+    
+    audioEl.style.display   = "none";
+    audioEl.onended         = null;
+    audioEl.onerror         = null;
+    audioEl.pause();
+    audioEl.src = "";
   }
 
   function playNext() {
@@ -149,10 +165,12 @@
     const data = queue.shift();
     hideAll();
 
-    // Pseudo + avatar
-    avatarEl.src           = data.avatar || "";
-    usernameEl.textContent = data.username || "";
-    userInfo.style.display = "flex";
+    // Pseudo + avatar (masqué si hide_user est true)
+    if (!data.hide_user) {
+      avatarEl.src           = data.avatar || "";
+      usernameEl.textContent = data.username || "";
+      userInfo.style.display = "flex";
+    }
 
     // Texte
     if (data.text) {
@@ -184,6 +202,23 @@
       mediaWrap.style.display = "flex";
       // Image : affiche 8 secondes puis passe au suivant
       setTimeout(playNext, 8000);
+
+    } else if (data.media_type === "audio") {
+      audioEl.volume          = 1.0;
+      audioEl.style.display   = "block";
+      mediaWrap.style.display = "flex";
+
+      // Passe au suivant dès que l'audio se termine
+      audioEl.onended = () => playNext();
+      audioEl.onerror = () => {
+        setTimeout(playNext, 1000);
+      };
+
+      audioEl.src = data.media;
+      audioEl.play().catch(() => {
+        audioEl.muted = true;
+        audioEl.play();
+      });
 
     } else {
       // Texte seul : affiche 8 secondes puis passe au suivant

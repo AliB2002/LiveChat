@@ -50,8 +50,42 @@ def download_and_convert(url, job_id, original_type, meta):
                 "username": meta["username"],
                 "avatar": meta["avatar"],
                 "text": meta["text"],
+                "hide_user": meta.get("hide_user", False),
                 "media": f"/media/{job_id}.mp4",
                 "media_type": "video",
+            })
+        elif original_type == "audio":
+            # Convertir les fichiers audio en MP3 si ce n'est pas déjà le cas
+            output_path = os.path.join(MEDIA_DIR, f"{job_id}.mp3")
+            if ext != "mp3":
+                result = subprocess.run([
+                    "ffmpeg", "-y",
+                    "-i", input_path,
+                    "-codec:a", "libmp3lame",
+                    "-q:a", "2",
+                    output_path
+                ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                
+                if result.returncode != 0:
+                    # Si la conversion échoue, on essaie avec aac
+                    subprocess.run([
+                        "ffmpeg", "-y",
+                        "-i", input_path,
+                        "-codec:a", "aac",
+                        output_path
+                    ], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                os.remove(input_path)
+            else:
+                os.rename(input_path, output_path)
+            
+            socketio.emit("show_overlay", {
+                "job_id": job_id,
+                "username": meta["username"],
+                "avatar": meta["avatar"],
+                "text": meta["text"],
+                "hide_user": meta.get("hide_user", False),
+                "media": f"/media/{job_id}.mp3",
+                "media_type": "audio",
             })
         else:
             output_path = os.path.join(MEDIA_DIR, f"{job_id}.{ext}")
@@ -61,6 +95,7 @@ def download_and_convert(url, job_id, original_type, meta):
                 "username": meta["username"],
                 "avatar": meta["avatar"],
                 "text": meta["text"],
+                "hide_user": meta.get("hide_user", False),
                 "media": f"/media/{job_id}.{ext}",
                 "media_type": "image",
             })
@@ -90,6 +125,10 @@ def push():
         "text": data.get("text", ""),
     }
 
+    # Récupérer hide_user s'il existe
+    hide_user = data.get("hide_user", False)
+    meta["hide_user"] = hide_user
+    
     if data.get("media"):
         t = threading.Thread(
             target=download_and_convert,
@@ -103,6 +142,7 @@ def push():
             "username": meta["username"],
             "avatar": meta["avatar"],
             "text": meta["text"],
+            "hide_user": meta["hide_user"],
             "media": None,
             "media_type": None,
         })
