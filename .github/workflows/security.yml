@@ -15,29 +15,25 @@ permissions:
 
 jobs:
   gitleaks:
-    name: Secrets Scan (Gitleaks)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - name: Create reports dir
-        run: mkdir -p reports
-      - name: Run Gitleaks
-        uses: gitleaks/gitleaks-action@v2
-        with:
-          report-format: sarif
-          report-path: reports/gitleaks.sarif
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        continue-on-error: true
-      - name: Upload Gitleaks report artifact
-        uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: gitleaks-report
-          path: reports/gitleaks.sarif
-          if-no-files-found: warn
+  name: Secrets Scan (Gitleaks)
+  runs-on: ubuntu-latest
+  container:
+    image: zricethezav/gitleaks:latest
+  steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+    - name: Run Gitleaks
+      run: |
+        mkdir -p reports
+        gitleaks detect --source . --report-format sarif --report-path reports/gitleaks.sarif --exit-code 0
+    - name: Upload Gitleaks report artifact
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: gitleaks-report
+        path: reports/gitleaks.sarif
+        if-no-files-found: warn
 
   trivy-fs:
     name: Vulnerability & IaC Scan (Trivy)
