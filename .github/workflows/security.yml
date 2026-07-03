@@ -15,54 +15,54 @@ permissions:
 
 jobs:
   gitleaks:
-  name: Secrets Scan (Gitleaks)
-  runs-on: ubuntu-latest
-  steps:
-    - uses: actions/checkout@v4
-      with:
-        fetch-depth: 0
-    - name: Create reports dir
-      run: mkdir -p reports
-    - name: Run Gitleaks
-      uses: gitleaks/gitleaks-action@v2
-      with:
-        report-format: sarif
-        report-path: reports/gitleaks.sarif
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      continue-on-error: true
-    - name: Upload Gitleaks report artifact
-      uses: actions/upload-artifact@v4
-      if: always()
-      with:
-        name: gitleaks-report
-        path: reports/gitleaks.sarif
-        if-no-files-found: warn
+    name: Secrets Scan (Gitleaks)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Create reports dir
+        run: mkdir -p reports
+      - name: Run Gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        with:
+          report-format: sarif
+          report-path: reports/gitleaks.sarif
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        continue-on-error: true
+      - name: Upload Gitleaks report artifact
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: gitleaks-report
+          path: reports/gitleaks.sarif
+          if-no-files-found: warn
 
-trivy-fs:
-  name: Vulnerability & IaC Scan (Trivy)
-  runs-on: ubuntu-latest
-  steps:
-    - uses: actions/checkout@v4
-    - name: Create reports dir
-      run: mkdir -p reports
-    - name: Run Trivy filesystem scan
-      uses: aquasecurity/trivy-action@master
-      with:
-        scan-type: 'fs'
-        scan-ref: '.'
-        format: 'sarif'
-        output: 'reports/trivy-fs.sarif'
-        severity: 'CRITICAL,HIGH,MEDIUM'
-        exit-code: '0'
-      continue-on-error: true
-    - name: Upload Trivy reports
-      uses: actions/upload-artifact@v4
-      if: always()
-      with:
-        name: trivy-report
-        path: reports/trivy-*.sarif
-        if-no-files-found: warn
+  trivy-fs:
+    name: Vulnerability & IaC Scan (Trivy)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Create reports dir
+        run: mkdir -p reports
+      - name: Run Trivy filesystem scan
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: fs
+          scan-ref: .
+          format: sarif
+          output: reports/trivy-fs.sarif
+          severity: CRITICAL,HIGH,MEDIUM
+          exit-code: "0"
+        continue-on-error: true
+      - name: Upload Trivy reports
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: trivy-report
+          path: reports/trivy-*.sarif
+          if-no-files-found: warn
 
   sast-semgrep:
     name: SAST (Semgrep)
@@ -83,7 +83,6 @@ trivy-fs:
         with:
           name: semgrep-report
           path: reports/semgrep.sarif
-          retention-days: 30
 
   consolidate:
     name: Consolidated Security Report
@@ -96,40 +95,34 @@ trivy-fs:
         uses: actions/download-artifact@v4
         with:
           path: all-reports
-
       - name: Install jq
         run: sudo apt-get install -y jq
-
       - name: Build consolidated summary
         run: |
-          echo "# Rapport de sécurité consolidé - LiveChat" > report.md
+          echo "# Rapport de securite consolide - LiveChat" > report.md
           echo "" >> report.md
-          echo "| Outil | Statut | Résultats |" >> report.md
+          echo "| Outil | Statut | Resultats |" >> report.md
           echo "|---|---|---|" >> report.md
           for tool in gitleaks trivy semgrep; do
             file=$(find all-reports -iname "*${tool}*" -name "*.sarif" | head -1)
             if [ -f "$file" ]; then
               count=$(jq '[.runs[].results[]] | length' "$file" 2>/dev/null || echo "N/A")
-              echo "| ${tool} | ✅ Exécuté | ${count} findings |" >> report.md
+              echo "| ${tool} | Execute | ${count} findings |" >> report.md
             else
-              echo "| ${tool} | ⚠️ Rapport absent | - |" >> report.md
+              echo "| ${tool} | Rapport absent | - |" >> report.md
             fi
           done
-          cat report.md >> $GITHUB_STEP_SUMMARY
-
+          cat report.md >> "$GITHUB_STEP_SUMMARY"
       - name: Upload consolidated report
         uses: actions/upload-artifact@v4
         with:
           name: consolidated-security-report
           path: report.md
-          retention-days: 90
-
       - name: Upload all SARIF to GitHub Security tab
         uses: github/codeql-action/upload-sarif@v3
         continue-on-error: true
         with:
           sarif_file: all-reports
-
       - name: Comment on PR
         if: github.event_name == 'pull_request'
         uses: actions/github-script@v7
