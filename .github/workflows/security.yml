@@ -1,0 +1,148 @@
+name: Security Pipeline
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  security-events: write
+  actions: read
+  pull-requests: write
+
+jobs:
+  gitleaks:
+    name: Secrets Scan (Gitleaks)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Run Gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_ENABLE_COMMENTS: false
+          GITLEAKS_REPORT_FORMAT: sarif
+          GITLEAKS_REPORT_PATH: reports/gitleaks.sarif
+        continue-on-error: true
+      - name: Upload Gitleaks report artifact
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: gitleaks-report
+          path: reports/gitleaks.sarif
+          retention-days: 30
+
+  trivy-fs:
+    name: Vulnerability & IaC Scan (Trivy)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run Trivy filesystem scan
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'fs'
+          scan-ref: '.'
+          format: 'sarif'
+          output: 'reports/trivy-fs.sarif'
+          severity: 'CRITICAL,HIGH,MEDIUM'
+        continue-on-error: true
+      - name: Run Trivy config scan (Dockerfile/IaC)
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'config'
+          scan-ref: '.'
+          format: 'sarif'
+          output: 'reports/trivy-config.sarif'
+        continue-on-error: true
+      - name: Upload Trivy reports
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: trivy-report
+          path: reports/trivy-*.sarif
+          retention-days: 30
+
+  sast-semgrep:
+    name: SAST (Semgrep)
+    runs-on: ubuntu-latest
+    container:
+      image: semgrep/semgrep
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run Semgrep
+        run: |
+          mkdir -p reports
+          semgrep ci --sarif --output=reports/semgrep.sarif || true
+        env:
+          SEMGREP_RULES: p/security-audit p/secrets p/owasp-top-ten
+      - name: Upload Semgrep report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: semgrep-report
+          path: reports/semgrep.sarif
+          retention-days: 30
+
+  consolidate:
+    name: Consolidated Security Report
+    needs: [gitleaks, trivy-fs, sast-semgrep]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download all reports
+        uses: actions/download-artifact@v4
+        with:
+          path: all-reports
+
+      - name: Install jq
+        run: sudo apt-get install -y jq
+
+      - name: Build consolidated summary
+        run: |
+          echo "# Rapport de sécurité consolidé - LiveChat" > report.md
+          echo "" >> report.md
+          echo "| Outil | Statut | Résultats |" >> report.md
+          echo "|---|---|---|" >> report.md
+          for tool in gitleaks trivy semgrep; do
+            file=$(find all-reports -iname "*${tool}*" -name "*.sarif" | head -1)
+            if [ -f "$file" ]; then
+              count=$(jq '[.runs[].results[]] | length' "$file" 2>/dev/null || echo "N/A")
+              echo "| ${tool} | ✅ Exécuté | ${count} findings |" >> report.md
+            else
+              echo "| ${tool} | ⚠️ Rapport absent | - |" >> report.md
+            fi
+          done
+          cat report.md >> $GITHUB_STEP_SUMMARY
+
+      - name: Upload consolidated report
+        uses: actions/upload-artifact@v4
+        with:
+          name: consolidated-security-report
+          path: report.md
+          retention-days: 90
+
+      - name: Upload all SARIF to GitHub Security tab
+        uses: github/codeql-action/upload-sarif@v3
+        continue-on-error: true
+        with:
+          sarif_file: all-reports
+
+      - name: Comment on PR
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const body = fs.readFileSync('report.md', 'utf8');
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: body
+            });
